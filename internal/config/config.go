@@ -10,6 +10,7 @@ import (
 type Config struct {
 	DatabaseURI string
 	ImagePath   string
+	StoragePath string
 	Port        string
 	Environment string
 }
@@ -25,5 +26,6 @@ func LoadConfig() *Config {
 		ImagePath:   os.Getenv("IMAGE_PATH"),
 		Port:        os.Getenv("HTTP_PORT"),
 		Environment: os.Getenv("ENVIRONMENT"),
+		StoragePath: os.Getenv("STORAGE_PATH"),
 	}
 }

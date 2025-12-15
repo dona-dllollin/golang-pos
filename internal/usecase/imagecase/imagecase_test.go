@@ -15,7 +15,7 @@ func TestImageUploadService_Upload(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	service := &ImageUploadService{
-		BasePath: tmpDir,
+		StoragePath: tmpDir,
 	}
 
 	// fake multipart file

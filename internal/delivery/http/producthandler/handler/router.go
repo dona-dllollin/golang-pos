@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+
 	"github.com/dona-dllollin/belajar-clean-arch/internal/repository/productrepo"
 	"github.com/dona-dllollin/belajar-clean-arch/internal/usecase/imagecase"
 	"github.com/dona-dllollin/belajar-clean-arch/internal/usecase/productcase"
@@ -14,12 +16,14 @@ func Routes(
 	db *pgx.Conn,
 	validator validation.Validation,
 	imagePath string,
+	stotagePath string,
 ) {
 
 	productRepository := productrepo.NewProductRepository(db)
 	ProductUseCase := productcase.NewProductService(*productRepository)
 	imageService := imagecase.ImageUploadService{
-		BasePath: imagePath,
+		PublicPath:  imagePath,
+		StoragePath: fmt.Sprintf("%s/%s", stotagePath, imagePath),
 	}
 	productHandler := NewProductHandler(ProductUseCase, validator, &imageService)
 

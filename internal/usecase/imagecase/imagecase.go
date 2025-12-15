@@ -15,7 +15,8 @@ type ImageService interface {
 }
 
 type ImageUploadService struct {
-	BasePath string
+	StoragePath string
+	PublicPath  string
 }
 
 func (s *ImageUploadService) ImageUpload(ctx context.Context, file *multipart.FileHeader) (string, error) {
@@ -26,14 +27,14 @@ func (s *ImageUploadService) ImageUpload(ctx context.Context, file *multipart.Fi
 	}
 	defer src.Close()
 
-	if err := os.MkdirAll(s.BasePath, 0755); err != nil {
+	if err := os.MkdirAll(s.StoragePath, 0755); err != nil {
 		return "", err
 	}
 
 	extension := filepath.Ext(file.Filename)
 	newFileName := fmt.Sprintf("%d%s", time.Now().Unix(), extension)
 
-	dstPath := filepath.Join(s.BasePath, newFileName)
+	dstPath := filepath.Join(s.StoragePath, newFileName)
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		return "", err
@@ -44,6 +45,7 @@ func (s *ImageUploadService) ImageUpload(ctx context.Context, file *multipart.Fi
 		return "", err
 	}
 
-	return dstPath, nil
+	publicPath := filepath.Join(s.PublicPath, newFileName)
+	return publicPath, nil
 
 }
