@@ -51,6 +51,10 @@ func (s Server) Run() error {
 		}
 	})
 
+	// handle static file
+	fs := http.FileServer(http.Dir("static"))
+	s.engine.Handle("/static/*", http.StripPrefix("/static", fs))
+
 	// start http server
 	logger.Info("HTTP server is listening on PORT: ", s.cfg.Port)
 	if err := http.ListenAndServe(s.cfg.Port, s.engine); err != nil {
@@ -62,7 +66,7 @@ func (s Server) Run() error {
 func (s Server) MapRoute() {
 	s.engine.Route("/api/v1", func(r chi.Router) {
 		r.Route("/products", func(r chi.Router) {
-			productHttp.Routes(r, s.db, s.validator, s.cfg.ImagePath)
+			productHttp.Routes(r, s.db, s.validator, s.cfg.ImagePath, s.cfg.StoragePath)
 		})
 	})
 }

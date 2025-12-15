@@ -20,13 +20,33 @@ func NewProductRepository(db *pgx.Conn) *ProductRepository {
 }
 
 func (conn ProductRepository) Create(ctx context.Context, p *productModel.Product) (int64, error) {
-	query := `INSERT INTO products (name, description) VALUES ($1, $2) RETURNING id`
 
+	// insert into table product
+	query := `INSERT INTO products (name, description) VALUES ($1, $2) RETURNING id`
 	var id int64
 	err := conn.db.QueryRow(ctx, query, p.Name, p.Description).Scan(&id)
 	if err != nil {
-		logger.Error("Error", err.Error())
+		logger.Error("Error: ", err.Error())
 		return 0, utils.MapDbError(err)
 	}
+
+	// insert into table categoy_product
+	for _, categoryId := range p.CategoryId {
+		_, err := conn.db.Exec(ctx, `INSERT INTO category_products (product_id, category_id) VALUES ($1, $2)`, id, categoryId)
+		if err != nil {
+			logger.Error("Error: ", err.Error())
+			return 0, utils.MapDbError(err)
+		}
+	}
+
+	// insert into table product_images
+	for _, image := range p.Images {
+		_, err := conn.db.Exec(ctx, `INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)`, id, image.URL, image.SortOrder)
+		if err != nil {
+			logger.Error("Error: ", err.Error())
+			return 0, utils.MapDbError(err)
+		}
+	}
+
 	return id, err
 }

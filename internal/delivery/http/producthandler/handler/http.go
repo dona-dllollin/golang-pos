@@ -65,14 +65,6 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 		CategoryId:  req.CategoryId,
 	}
 
-	//	panggil service product dulu supaya dapat id productnya
-	id, err := h.productService.CreateProduct(r.Context(), &product)
-	if err != nil {
-		logger.Error("error:", err)
-		errorUtils.WriteHTTPError(w, err)
-		return
-	}
-
 	// Handle Image
 	files := r.MultipartForm.File["images"]
 
@@ -88,11 +80,19 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 
 		// add in product model
 		product.Images = append(product.Images, productModel.ProductImage{
-			ProductID: *id,
 			URL:       url,
 			SortOrder: currentSortOrder,
 		})
 	}
+
+	//	panggil service product
+	id, err := h.productService.CreateProduct(r.Context(), &product)
+	if err != nil {
+		logger.Error("error:", err)
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
 	response.JSON(w, http.StatusCreated, "success", id)
 
 }
