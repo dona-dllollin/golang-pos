@@ -40,8 +40,11 @@ type ProductRepoInterface interface {
 	// Upload(ctx context.Context, f *io.Reader) (string, error)
 }
 
-type CategoryRepository interface {
-	Create(ctx context.Context, c *productModel.Category) (int64, error)
-	FindAll(ctx context.Context) ([]productModel.Category, error)
-	FindByID(ctx context.Context, id int64) (*productModel.Category, error)
+type CategoryInterface interface {
+	CreateCategory(ctx context.Context, c *productModel.Category) (int64, error)
+	UpdateCategory(ctx context.Context, c *productModel.Category) error
+	DeleteCategory(ctx context.Context, id int64) error
+	FindAllCategory(ctx context.Context) ([]productModel.Category, error)
+	FindCategory(ctx context.Context, id int64) (*productModel.Category, error)
+	// FindCategoryByParent(ctx context.Context, id int64) (*productModel.Category, error)
 }

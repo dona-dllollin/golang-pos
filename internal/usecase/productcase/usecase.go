@@ -17,11 +17,13 @@ type ProductService interface {
 	// GetProductByID(ctx context.Context, id int64) (*productModel.Product, error)
 	// ListProducts(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
 
-	// // ------ CATEGORY ------
-	// CreateCategory(ctx context.Context, c *productModel.Category) (int64, error)
-	// UpdateCategory(ctx context.Context, c *productModel.Category) error
-	// DeleteCategory(ctx context.Context, id int64) error
-	// ListCategories(ctx context.Context) ([]productModel.Category, error)
+	// ------ CATEGORY ------
+	CreateCategory(ctx context.Context, c *productModel.Category) (*int64, error)
+	UpdateCategory(ctx context.Context, c *productModel.Category) error
+	DeleteCategory(ctx context.Context, id int64) error
+	ListCategories(ctx context.Context) ([]productModel.Category, error)
+	GetCategory(ctx context.Context, id int64) (*productModel.Category, error)
+	// GetCategoryByParentId(ctx context.Context, id int64) ([]productModel.Category, error)
 
 	// // ------ VARIANT ------
 	// AddVariant(ctx context.Context, v *productModel.Variant) (int64, error)
@@ -49,12 +51,14 @@ type ProductFilter struct {
 }
 
 type ProductUseCase struct {
-	productRepo Repository.ProductRepoInterface
+	productRepo  Repository.ProductRepoInterface
+	categoryRepo Repository.CategoryInterface
 }
 
-func NewProductService(productRepo Repository.ProductRepository) *ProductUseCase {
+func NewProductService(productRepo Repository.ProductRepoInterface, categoryRepo Repository.CategoryInterface) *ProductUseCase {
 	return &ProductUseCase{
-		productRepo: productRepo,
+		productRepo:  productRepo,
+		categoryRepo: categoryRepo,
 	}
 }
 
@@ -77,6 +81,60 @@ func (s *ProductUseCase) CreateProduct(ctx context.Context, p *productModel.Prod
 // func (s *ProductUseCase) UpdateProduct(ctx context.Context, p *productModel.Product) error {
 // 	return s.productRepo.Update(ctx, p)
 // }
+
+// ----------------------------------------------------------------------
+// Category Product
+// ----------------------------------------------------------------------
+
+func (s *ProductUseCase) CreateCategory(ctx context.Context, c *productModel.Category) (*int64, error) {
+	id, err := s.categoryRepo.CreateCategory(ctx, c)
+	if err != nil {
+		logger.Errorf("Create fail, error: %s", err)
+		return nil, err
+	}
+
+	return &id, nil
+}
+
+func (s *ProductUseCase) UpdateCategory(ctx context.Context, c *productModel.Category) error {
+	err := s.categoryRepo.UpdateCategory(ctx, c)
+	if err != nil {
+		logger.Errorf("Update fail, error: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (s *ProductUseCase) DeleteCategory(ctx context.Context, id int64) error {
+	err := s.categoryRepo.DeleteCategory(ctx, id)
+	if err != nil {
+		logger.Errorf("Delete fail, error: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (s *ProductUseCase) ListCategories(ctx context.Context) ([]productModel.Category, error) {
+	categories, err := s.categoryRepo.FindAllCategory(ctx)
+	if err != nil {
+		logger.Errorf("failed to Get List Categories, error: %s", err)
+		return nil, err
+	}
+
+	return categories, nil
+}
+
+func (s *ProductUseCase) GetCategory(ctx context.Context, id int64) (*productModel.Category, error) {
+	categories, err := s.categoryRepo.FindCategory(ctx, id)
+	if err != nil {
+		logger.Errorf("fail Get Category, error: %s", err)
+		return nil, err
+	}
+
+	return categories, nil
+}
 
 // // ----------------------------------------------------------------------
 // // PARTIAL EDIT: ADD VARIANT

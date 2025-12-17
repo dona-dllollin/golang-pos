@@ -20,13 +20,22 @@ func Routes(
 ) {
 
 	productRepository := productrepo.NewProductRepository(db)
-	ProductUseCase := productcase.NewProductService(*productRepository)
+	categoryRepository := productrepo.NewCategoryRepsitory(db)
+	ProductUseCase := productcase.NewProductService(productRepository, categoryRepository)
 	imageService := imagecase.ImageUploadService{
 		PublicPath:  imagePath,
 		StoragePath: fmt.Sprintf("%s/%s", stotagePath, imagePath),
 	}
 	productHandler := NewProductHandler(ProductUseCase, validator, &imageService)
 
+	// product
 	r.Post("/", productHandler.StoreProduct)
+
+	//categories
+	r.Get("/categories", productHandler.ListCategories)
+	r.Post("/category", productHandler.CreateCategory)
+	r.Get("/category/{categoryId}", productHandler.GetCategory)
+	r.Put("/category", productHandler.UpdateCategory)
+	r.Delete("/category/{categoryId}", productHandler.DeleteCategory)
 
 }

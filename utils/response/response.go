@@ -13,7 +13,7 @@ type Response struct {
 }
 
 // JSON menulis respons JSON standar ke http.ResponseWriter.
-func JSON(w http.ResponseWriter, statusCode int, status string, data interface{}) {
+func JSON(w http.ResponseWriter, statusCode int, status string, data ...interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
