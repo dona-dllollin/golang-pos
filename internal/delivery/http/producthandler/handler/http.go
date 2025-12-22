@@ -47,6 +47,7 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 
 	// category[] -> []*int64
 	categoryValues := r.MultipartForm.Value["category_id"]
+
 	for _, v := range categoryValues {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -54,6 +55,16 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.CategoryId = append(req.CategoryId, &id)
+	}
+
+	// variants (JSON)
+	if variantsStr := r.FormValue("variants"); variantsStr != "" {
+		logger.Info(variantsStr)
+		if err := json.Unmarshal([]byte(variantsStr), &req.Variants); err != nil {
+			logger.Error(err)
+			http.Error(w, "invalid variants json", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// validate
@@ -90,6 +101,18 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// variants → domain
+	for _, v := range req.Variants {
+		product.Variants = append(product.Variants, productModel.Variant{
+			SKU:       v.SKU,
+			BaseUnit:  v.BaseUnit,
+			Stock:     v.Stock,
+			CostPrice: v.CostPrice,
+			Options:   dto.MapOptions(v.Options),
+			Units:     dto.MapUnits(v.Units),
+		})
+	}
+
 	//	panggil service product
 	id, err := h.productService.CreateProduct(r.Context(), &product)
 	if err != nil {
@@ -100,6 +123,177 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusCreated, "success", id)
 
+
+}
+
+// GET LIST PRODUCT
+func (h *productHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
+	var filter productcase.ProductFilter
+
+	// Query params
+	q := r.URL.Query()
+
+	filter.Search = q.Get("search")
+
+	if catID := q.Get("category_id"); catID != "" {
+		id, err := strconv.ParseInt(catID, 10, 64)
+		if err == nil {
+			filter.CategoryID = &id
+		}
+	}
+
+	if status := q.Get("status"); status != "" {
+		filter.Status = &status
+	}
+
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	page, _ := strconv.Atoi(q.Get("page"))
+
+	if limit > 0 {
+		filter.Limit = limit
+	}
+
+	if page > 0 && limit > 0 {
+		filter.Offset = (page - 1) * limit
+	}
+
+	products, err := h.productService.ListProducts(r.Context(), filter)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", products)
+}
+
+// GET PRODUCT BY ID
+func (h *productHandler) GetProductById(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	product, err := h.productService.GetProductByID(r.Context(), id)
+	if err != nil {
+		if err == errorUtils.ErrNotFound {
+			errorUtils.WriteHTTPError(w, errorUtils.ErrNotFound)
+			return
+		}
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", product)
+}
+
+// UPDATE PRODUCT
+func (h *productHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	// Parsing Multipart similar to Store
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req dto.CreateProductRequest
+	req.Name = r.FormValue("name")
+	req.Description = r.FormValue("description")
+
+	// category[] 
+	categoryValues := r.MultipartForm.Value["category_id"]
+	for _, v := range categoryValues {
+		catID, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid category_id", http.StatusBadRequest)
+			return
+		}
+		req.CategoryId = append(req.CategoryId, &catID)
+	}
+
+	// variants (JSON)
+	if variantsStr := r.FormValue("variants"); variantsStr != "" {
+		if err := json.Unmarshal([]byte(variantsStr), &req.Variants); err != nil {
+			http.Error(w, "invalid variants json", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// validate
+	// Note: You might want to skip required fields if partial update is allowed, 
+	// but strictly for "UpdateProduct" (Put) we expect full resource or at least valid struct.
+	// Reusing CreateProductRequest validation might fail if they omit something required.
+	// For now, let's assume valid input.
+
+	product := productModel.Product{
+		ID:          id,
+		Name:        req.Name,
+		Description: req.Description,
+		CategoryId:  req.CategoryId,
+	}
+
+	// Handle Image
+	files := r.MultipartForm.File["images"]
+	if len(files) > 0 {
+		for i, file := range files {
+			currentSortOrder := i + 1
+			url, err := h.imageService.ImageUpload(r.Context(), file)
+			if err != nil {
+				errorUtils.WriteHTTPError(w, err)
+				return
+			}
+			product.Images = append(product.Images, productModel.ProductImage{
+				URL:       url,
+				SortOrder: currentSortOrder,
+			})
+		}
+	}
+
+	// variants → domain
+	// Only mapping if variants provided
+	for _, v := range req.Variants {
+		product.Variants = append(product.Variants, productModel.Variant{
+			SKU:       v.SKU,
+			BaseUnit:  v.BaseUnit,
+			Stock:     v.Stock,
+			CostPrice: v.CostPrice,
+			Options:   dto.MapOptions(v.Options),
+			Units:     dto.MapUnits(v.Units),
+		})
+	}
+
+	err = h.productService.UpdateProduct(r.Context(), &product)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", product.ID)
+}
+
+// DELETE PRODUCT
+func (h *productHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	err = h.productService.DeleteProduct(r.Context(), id)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", nil)
 }
 
 // GET ALL CATEGORY

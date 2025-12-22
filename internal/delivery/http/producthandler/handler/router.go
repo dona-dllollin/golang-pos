@@ -29,7 +29,11 @@ func Routes(
 	productHandler := NewProductHandler(ProductUseCase, validator, &imageService)
 
 	// product
+	r.Get("/", productHandler.ListProducts)
 	r.Post("/", productHandler.StoreProduct)
+	r.Get("/{id}", productHandler.GetProductById)
+	r.Put("/{id}", productHandler.UpdateProduct)
+	r.Delete("/{id}", productHandler.DeleteProduct)
 
 	//categories
 	r.Get("/categories", productHandler.ListCategories)

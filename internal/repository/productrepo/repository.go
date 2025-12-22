@@ -19,16 +19,16 @@ type ProductRepoInterface interface {
 	Create(ctx context.Context, p *productModel.Product) (int64, error)
 
 	// // Update product lengkap (deep update: images, variants, units)
-	// Update(ctx context.Context, p *productModel.Product) error
+	Update(ctx context.Context, p *productModel.Product) error
 
 	// // Soft delete / archive product
-	// Delete(ctx context.Context, id int64) error
+	Delete(ctx context.Context, id int64) error
 
 	// // Get product lengkap by id
-	// FindByID(ctx context.Context, id int64) (*productModel.Product, error)
+	FindByID(ctx context.Context, id int64) (*productModel.Product, error)
 
-	// // List product dengan filter fleksibel
-	// FindAll(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
+	// List product dengan filter fleksibel
+	FindAll(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
 
 	// // Cek stok varian tertentu
 	// GetVariantStock(ctx context.Context, variantID int64) (int, error)
@@ -36,8 +36,6 @@ type ProductRepoInterface interface {
 	// // Update stok varian (misal POS)
 	// UpdateVariantStock(ctx context.Context, variantID int64, newStock int) error
 
-	// //upload gambar
-	// Upload(ctx context.Context, f *io.Reader) (string, error)
 }
 
 type CategoryInterface interface {

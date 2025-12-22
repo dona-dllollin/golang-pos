@@ -11,11 +11,11 @@ import (
 type ProductService interface {
 	// ------ PRODUCT ------
 	CreateProduct(ctx context.Context, p *productModel.Product) (*int64, error)
-	// UpdateProduct(ctx context.Context, p *productModel.Product) error
-	// DeleteProduct(ctx context.Context, id int64) error
+	UpdateProduct(ctx context.Context, p *productModel.Product) error
+	DeleteProduct(ctx context.Context, id int64) error
 
-	// GetProductByID(ctx context.Context, id int64) (*productModel.Product, error)
-	// ListProducts(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
+	GetProductByID(ctx context.Context, id int64) (*productModel.Product, error)
+	ListProducts(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
 
 	// ------ CATEGORY ------
 	CreateCategory(ctx context.Context, c *productModel.Category) (*int64, error)
@@ -80,7 +80,39 @@ func (s *ProductUseCase) CreateProduct(ctx context.Context, p *productModel.Prod
 
 // func (s *ProductUseCase) UpdateProduct(ctx context.Context, p *productModel.Product) error {
 // 	return s.productRepo.Update(ctx, p)
-// }
+func (s *ProductUseCase) UpdateProduct(ctx context.Context, p *productModel.Product) error {
+	return s.productRepo.Update(ctx, p)
+}
+
+func (s *ProductUseCase) DeleteProduct(ctx context.Context, id int64) error {
+	return s.productRepo.Delete(ctx, id)
+}
+
+func (s *ProductUseCase) GetProductByID(ctx context.Context, id int64) (*productModel.Product, error) {
+	return s.productRepo.FindByID(ctx, id)
+}
+
+func (s *ProductUseCase) ListProducts(ctx context.Context, filter ProductFilter) ([]productModel.Product, error) {
+	// Map struct usecase filter -> repo filter
+	repoFilter := Repository.ProductFilter{
+		Keyword:    filter.Search,
+		CategoryID: filter.CategoryID,
+		Limit:      filter.Limit,
+		Offset:     filter.Offset,
+	}
+
+	if filter.Status != nil {
+		repoFilter.Status = *filter.Status
+	}
+
+	products, err := s.productRepo.FindAll(ctx, repoFilter)
+	if err != nil {
+		logger.Errorf("ListProducts fail, error: %s", err)
+		return nil, err
+	}
+
+	return products, nil
+}
 
 // ----------------------------------------------------------------------
 // Category Product
