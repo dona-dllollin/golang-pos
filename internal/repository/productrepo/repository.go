@@ -25,10 +25,13 @@ type ProductRepoInterface interface {
 	Delete(ctx context.Context, id int64) error
 
 	// // Get product lengkap by id
-	FindByID(ctx context.Context, id int64) (*productModel.Product, error)
+	FindByID(ctx context.Context, id int64) (*productModel.ProductDetail, error)
 
 	// List product dengan filter fleksibel
 	FindAll(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
+
+	// Get Image By ID
+	GetImageById(ctx context.Context, id int64) (string, error)
 
 	// // Cek stok varian tertentu
 	// GetVariantStock(ctx context.Context, variantID int64) (int, error)

@@ -123,7 +123,6 @@ func (h *productHandler) StoreProduct(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusCreated, "success", id)
 
-
 }
 
 // GET LIST PRODUCT
@@ -198,7 +197,7 @@ func (h *productHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parsing Multipart similar to Store
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
+	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -207,8 +206,8 @@ func (h *productHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	req.Name = r.FormValue("name")
 	req.Description = r.FormValue("description")
 
-	// category[] 
-	categoryValues := r.MultipartForm.Value["category_id"]
+	// category[]
+	categoryValues := r.Form["category_id"]
 	for _, v := range categoryValues {
 		catID, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -218,20 +217,6 @@ func (h *productHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		req.CategoryId = append(req.CategoryId, &catID)
 	}
 
-	// variants (JSON)
-	if variantsStr := r.FormValue("variants"); variantsStr != "" {
-		if err := json.Unmarshal([]byte(variantsStr), &req.Variants); err != nil {
-			http.Error(w, "invalid variants json", http.StatusBadRequest)
-			return
-		}
-	}
-
-	// validate
-	// Note: You might want to skip required fields if partial update is allowed, 
-	// but strictly for "UpdateProduct" (Put) we expect full resource or at least valid struct.
-	// Reusing CreateProductRequest validation might fail if they omit something required.
-	// For now, let's assume valid input.
-
 	product := productModel.Product{
 		ID:          id,
 		Name:        req.Name,
@@ -239,40 +224,114 @@ func (h *productHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		CategoryId:  req.CategoryId,
 	}
 
+	err = h.productService.UpdateProduct(r.Context(), &product)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", product.ID)
+}
+
+// UPDATE IMAGE PRODUCT
+func (h *productHandler) UpdateImageProduct(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		errorUtils.WriteHTTPError(w, err)
+		return
+	}
+
+	// parsing Multipart
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var product productModel.Product
+	product.ID = id
+
+	// wadah untuk url gambar yang akan dihapus
+	var oldImages []string
+
 	// Handle Image
-	files := r.MultipartForm.File["images"]
-	if len(files) > 0 {
-		for i, file := range files {
-			currentSortOrder := i + 1
-			url, err := h.imageService.ImageUpload(r.Context(), file)
+	var payload []dto.ImagePayload
+	err = json.Unmarshal([]byte(r.FormValue("image_payload")), &payload)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for _, p := range payload {
+
+		switch p.Action {
+		case "add":
+			_, images, err := r.FormFile(p.FileKey)
 			if err != nil {
 				errorUtils.WriteHTTPError(w, err)
 				return
 			}
+			url, err := h.imageService.ImageUpload(r.Context(), images)
+			if err != nil {
+				errorUtils.WriteHTTPError(w, err)
+				return
+			}
+
 			product.Images = append(product.Images, productModel.ProductImage{
 				URL:       url,
-				SortOrder: currentSortOrder,
+				SortOrder: p.SortOrder,
 			})
-		}
-	}
+		case "replace":
+			oldUrl, err := h.productService.GetProductImage(r.Context(), *p.ID)
+			if err != nil {
+				errorUtils.WriteHTTPError(w, err)
+				return
+			}
+			oldImages = append(oldImages, oldUrl)
+			_, images, err := r.FormFile(p.FileKey)
+			if err != nil {
+				errorUtils.WriteHTTPError(w, err)
+				return
+			}
+			url, err := h.imageService.ImageUpload(r.Context(), images)
+			if err != nil {
+				errorUtils.WriteHTTPError(w, err)
+				return
+			}
 
-	// variants → domain
-	// Only mapping if variants provided
-	for _, v := range req.Variants {
-		product.Variants = append(product.Variants, productModel.Variant{
-			SKU:       v.SKU,
-			BaseUnit:  v.BaseUnit,
-			Stock:     v.Stock,
-			CostPrice: v.CostPrice,
-			Options:   dto.MapOptions(v.Options),
-			Units:     dto.MapUnits(v.Units),
-		})
+			product.Images = append(product.Images, productModel.ProductImage{
+				ID:        *p.ID,
+				URL:       url,
+				SortOrder: p.SortOrder,
+			})
+
+		case "delete":
+			oldUrl, err := h.productService.GetProductImage(r.Context(), *p.ID)
+			if err != nil {
+				errorUtils.WriteHTTPError(w, err)
+				return
+			}
+			oldImages = append(oldImages, oldUrl)
+
+		default:
+			http.Error(w, "invalid action", http.StatusBadRequest)
+			return
+		}
+
 	}
 
 	err = h.productService.UpdateProduct(r.Context(), &product)
 	if err != nil {
 		errorUtils.WriteHTTPError(w, err)
 		return
+	}
+
+	for _, img := range oldImages {
+		err := h.imageService.ImageDelete(r.Context(), img)
+		if err != nil {
+			errorUtils.WriteHTTPError(w, err)
+			return
+		}
 	}
 
 	response.JSON(w, http.StatusOK, "success", product.ID)

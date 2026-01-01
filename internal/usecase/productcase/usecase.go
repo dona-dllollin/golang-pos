@@ -13,9 +13,9 @@ type ProductService interface {
 	CreateProduct(ctx context.Context, p *productModel.Product) (*int64, error)
 	UpdateProduct(ctx context.Context, p *productModel.Product) error
 	DeleteProduct(ctx context.Context, id int64) error
-
-	GetProductByID(ctx context.Context, id int64) (*productModel.Product, error)
+	GetProductByID(ctx context.Context, id int64) (*productModel.ProductDetail, error)
 	ListProducts(ctx context.Context, filter ProductFilter) ([]productModel.Product, error)
+	GetProductImage(ctx context.Context, id int64) (string, error)
 
 	// ------ CATEGORY ------
 	CreateCategory(ctx context.Context, c *productModel.Category) (*int64, error)
@@ -78,8 +78,6 @@ func (s *ProductUseCase) CreateProduct(ctx context.Context, p *productModel.Prod
 
 }
 
-// func (s *ProductUseCase) UpdateProduct(ctx context.Context, p *productModel.Product) error {
-// 	return s.productRepo.Update(ctx, p)
 func (s *ProductUseCase) UpdateProduct(ctx context.Context, p *productModel.Product) error {
 	return s.productRepo.Update(ctx, p)
 }
@@ -88,7 +86,7 @@ func (s *ProductUseCase) DeleteProduct(ctx context.Context, id int64) error {
 	return s.productRepo.Delete(ctx, id)
 }
 
-func (s *ProductUseCase) GetProductByID(ctx context.Context, id int64) (*productModel.Product, error) {
+func (s *ProductUseCase) GetProductByID(ctx context.Context, id int64) (*productModel.ProductDetail, error) {
 	return s.productRepo.FindByID(ctx, id)
 }
 
@@ -112,6 +110,10 @@ func (s *ProductUseCase) ListProducts(ctx context.Context, filter ProductFilter)
 	}
 
 	return products, nil
+}
+
+func (s *ProductUseCase) GetProductImage(ctx context.Context, id int64) (string, error) {
+	return s.productRepo.GetImageById(ctx, id)
 }
 
 // ----------------------------------------------------------------------

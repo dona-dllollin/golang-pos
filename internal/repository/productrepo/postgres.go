@@ -2,6 +2,7 @@ package productrepo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -26,7 +27,7 @@ func NewProductRepository(db *pgx.Conn) *ProductRepository {
 	}
 }
 
-// Implementation To Add Product Data
+// ********** Implementation Create Product**********
 func (conn ProductRepository) Create(ctx context.Context, p *productModel.Product) (int64, error) {
 
 	tx, err := conn.db.Begin(ctx)
@@ -86,7 +87,7 @@ func (conn ProductRepository) Create(ctx context.Context, p *productModel.Produc
 	return productID, tx.Commit(ctx)
 }
 
-// Implementation To Add Variant Product
+// ********** Implementation Add Variant Product**********
 func (conn ProductRepository) AddVariant(ctx context.Context, variant productModel.Variant, tx pgx.Tx, id int64) error {
 
 	var variant_id int64
@@ -135,15 +136,42 @@ func (conn ProductRepository) AddVariant(ctx context.Context, variant productMod
 
 }
 
-// FindAll products
+// ********** Implementation FindAll Product**********
 func (conn ProductRepository) FindAll(ctx context.Context, filter ProductFilter) ([]productModel.Product, error) {
-	query := `SELECT p.id, p.name, p.description FROM products p`
+	query := `SELECT 
+			p.id,
+			p.name, 
+			p.description, 
+			p.status,
+			COALESCE(
+			JSONB_AGG(
+			DISTINCT JSONB_BUILD_OBJECT(
+			'id', pi.id,
+			'productId', pi.product_id,
+			'url', pi.url, 
+			'sortOrder', pi.sort_order
+			)
+			) FILTER (WHERE pi.id IS NOT NULL),
+			 '[]'::jsonb
+			) AS images,
+
+			COALESCE(
+			JSONB_AGG(DISTINCT pc.category_id) 
+			FILTER (WHERE pc.category_id IS NOT NULL),
+			 '[]'::jsonb
+			) AS categories
+			FROM products p 
+			LEFT JOIN product_images pi
+				ON pi.product_id = p.id
+			LEFT JOIN category_products pc
+				ON pc.product_id = p.id`
+
 	var args []interface{}
 	var conditions []string
 
 	if filter.CategoryID != nil {
-		query += " JOIN category_products cp ON cp.product_id = p.id"
-		conditions = append(conditions, fmt.Sprintf("cp.category_id = $%d", len(args)+1))
+		// query += " JOIN category_products cp ON cp.product_id = p.id"
+		conditions = append(conditions, fmt.Sprintf("pc.category_id = $%d", len(args)+1))
 		args = append(args, *filter.CategoryID)
 	}
 
@@ -161,7 +189,7 @@ func (conn ProductRepository) FindAll(ctx context.Context, filter ProductFilter)
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	query += " ORDER BY p.id DESC"
+	query += " GROUP BY p.id, p.name, p.description ORDER BY p.id DESC"
 
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
@@ -175,29 +203,56 @@ func (conn ProductRepository) FindAll(ctx context.Context, filter ProductFilter)
 
 	rows, err := conn.db.Query(ctx, query, args...)
 	if err != nil {
+		logger.Error("Error: ", err.Error())
 		return nil, utils.MapDbError(err)
 	}
 	defer rows.Close()
 
-	var products []productModel.Product
+	var (
+		imagesJSON     []byte
+		categoriesJSON []byte
+	)
+	// var products []Product
+	var productResponse []productModel.Product
 	for rows.Next() {
-		var p productModel.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description); err != nil {
+		var p Product
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Status, &imagesJSON, &categoriesJSON); err != nil {
+			logger.Error("Error: ", err.Error())
 			return nil, utils.MapDbError(err)
 		}
-		products = append(products, p)
+		// products = append(products, p)
+
+		var (
+			images     []productModel.ProductImage
+			categories []*int64
+		)
+		json.Unmarshal(imagesJSON, &images)
+		err := json.Unmarshal(categoriesJSON, &categories)
+		if err != nil {
+			logger.Error(err.Error())
+		}
+
+		productResponse = append(productResponse, productModel.Product{
+			ID:          int64(p.ID),
+			Name:        p.Name,
+			Description: p.Description,
+			Status:      p.Status,
+			Images:      images,
+			CategoryId:  categories,
+		})
 	}
 
 	if err := rows.Err(); err != nil {
+		logger.Error("Error: ", err.Error())
 		return nil, utils.MapDbError(err)
 	}
 
-	return products, nil
+	return productResponse, nil
 }
 
-// FindByID returns product with all relations
-func (conn ProductRepository) FindByID(ctx context.Context, id int64) (*productModel.Product, error) {
-	var p productModel.Product
+// ********** Implementation FindByID Product**********
+func (conn ProductRepository) FindByID(ctx context.Context, id int64) (*productModel.ProductDetail, error) {
+	var p productModel.ProductDetail
 	query := `SELECT id, name, description, status FROM products WHERE id = $1`
 	err := conn.db.QueryRow(ctx, query, id).Scan(&p.ID, &p.Name, &p.Description, &p.Status)
 	if err != nil {
@@ -208,18 +263,18 @@ func (conn ProductRepository) FindByID(ctx context.Context, id int64) (*productM
 	}
 
 	// Get Categories
-	catQuery := `SELECT category_id FROM category_products WHERE product_id = $1`
+	catQuery := `SELECT category_id, name FROM category_products WHERE product_id = $1`
 	rows, err := conn.db.Query(ctx, catQuery, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var cid int64
-		if err := rows.Scan(&cid); err != nil {
+		var category productModel.Category
+		if err := rows.Scan(&category.ID, &category.Name); err != nil {
 			return nil, err
 		}
-		p.CategoryId = append(p.CategoryId, &cid)
+		p.Categories = append(p.Categories, category)
 	}
 
 	// Get Images
@@ -245,7 +300,7 @@ func (conn ProductRepository) FindByID(ctx context.Context, id int64) (*productM
 		return nil, err
 	}
 	defer varRows.Close()
-	
+
 	// Temporarily store variants to fetch their options/units
 	for varRows.Next() {
 		var v productModel.Variant
@@ -296,8 +351,9 @@ func (conn ProductRepository) FindByID(ctx context.Context, id int64) (*productM
 	return &p, nil
 }
 
-// Update product (Basic info + Categories + Images logic for now)
+// ********** Implementation Update Product**********
 func (conn ProductRepository) Update(ctx context.Context, p *productModel.Product) error {
+
 	tx, err := conn.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -308,45 +364,116 @@ func (conn ProductRepository) Update(ctx context.Context, p *productModel.Produc
 	_, err = tx.Exec(ctx, `UPDATE products SET name=$1, description=$2, updated_at=NOW() WHERE id=$3`,
 		p.Name, p.Description, p.ID)
 	if err != nil {
+		logger.Error("Error: ", err.Error())
 		return utils.MapDbError(err)
 	}
 
 	// Update Categories: Delete all and re-insert
-	_, err = tx.Exec(ctx, `DELETE FROM category_products WHERE product_id=$1`, p.ID)
+	_, err = tx.Exec(ctx,
+		`INSERT INTO category_products (product_id, category_id) 
+		 SELECT $1, unnest($2::bigint[]) EXCEPT SELECT product_id, category_id FROM category_products
+		 WHERE product_id = $1`, p.ID, p.CategoryId)
 	if err != nil {
+		logger.Error("Error: ", err.Error())
 		return utils.MapDbError(err)
 	}
-	if len(p.CategoryId) > 0 {
-		for _, cid := range p.CategoryId {
-			_, err = tx.Exec(ctx, `INSERT INTO category_products (product_id, category_id) VALUES ($1, $2)`, p.ID, cid)
-			if err != nil {
-				return utils.MapDbError(err)
-			}
-		}
+	_, err = tx.Exec(ctx,
+		`DELETE FROM category_products 
+		 WHERE product_id = $1 AND category_id NOT IN (SELECT unnest($2::bigint[]))`,
+		p.ID, p.CategoryId)
+	if err != nil {
+		logger.Error("Error: ", err.Error())
+		return utils.MapDbError(err)
 	}
 
-	// Update Images: Strategy - Delete all and re-insert if Provided? 
-	// Or maybe only if images are provided in the request? 
-	// For this task, assuming if p.Images is provided, we replace.
+	// Update Images
 	if len(p.Images) > 0 {
-		_, err = tx.Exec(ctx, `DELETE FROM product_images WHERE product_id=$1`, p.ID)
+		err = conn.UpdateImage(ctx, p.ID, p.Images, tx)
 		if err != nil {
+			logger.Error("Error: ", err.Error())
 			return utils.MapDbError(err)
 		}
-		for _, img := range p.Images {
-			_, err = tx.Exec(ctx, `INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)`, p.ID, img.URL, img.SortOrder)
-			if err != nil {
-				return utils.MapDbError(err)
-			}
-		}
 	}
 
-	// NOTE: Variants update is skipped for now as it's complex state management
-	
 	return tx.Commit(ctx)
 }
 
-// Delete (Soft Delete)
+// ********** Implementation Update Image**********
+func (conn ProductRepository) UpdateImage(ctx context.Context, productId int64, images []productModel.ProductImage, tx pgx.Tx) error {
+
+	oldImages, err := conn.GetImageByProductId(ctx, productId)
+	if err != nil {
+		logger.Error("Error: ", err.Error())
+		return utils.MapDbError(err)
+	}
+
+	oldMap := make(map[int64]productModel.ProductImage)
+	for _, img := range oldImages {
+		oldMap[img.ID] = img
+	}
+	newMap := make(map[int64]productModel.ProductImage)
+	for _, img := range images {
+		newMap[img.ID] = img
+	}
+
+	for _, img := range oldMap {
+		if _, ok := newMap[img.ID]; !ok {
+			_, err = tx.Exec(ctx, `DELETE FROM product_images WHERE id=$1`, img.ID)
+			if err != nil {
+				logger.Error("Error: ", err.Error())
+				return utils.MapDbError(err)
+			}
+		}
+	}
+	for _, img := range newMap {
+		if _, ok := oldMap[img.ID]; !ok {
+			_, err = tx.Exec(ctx, `INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)`, productId, img.URL, img.SortOrder)
+			if err != nil {
+				logger.Error("Error: ", err.Error())
+				return utils.MapDbError(err)
+			}
+		} else {
+			_, err = tx.Exec(ctx, `UPDATE product_images SET url=$1, sort_order=$2 WHERE id=$3`, img.URL, img.SortOrder, img.ID)
+			if err != nil {
+				logger.Error("Error: ", err.Error())
+				return utils.MapDbError(err)
+			}
+		}
+	}
+	return nil
+}
+
+// ********** Implementation Get Image By Product ID**********
+func (conn ProductRepository) GetImageByProductId(ctx context.Context, productId int64) ([]productModel.ProductImage, error) {
+	query := `SELECT id, url, sort_order FROM product_images WHERE product_id = $1`
+	rows, err := conn.db.Query(ctx, query, productId)
+	if err != nil {
+		return nil, utils.MapDbError(err)
+	}
+	defer rows.Close()
+	var images []productModel.ProductImage
+	for rows.Next() {
+		var img productModel.ProductImage
+		if err := rows.Scan(&img.ID, &img.URL, &img.SortOrder); err != nil {
+			return nil, utils.MapDbError(err)
+		}
+		images = append(images, img)
+	}
+	return images, nil
+}
+
+// ***** Implementation Get Image By ID ******
+func (conn ProductRepository) GetImageById(ctx context.Context, id int64) (string, error) {
+	query := `SELECT url FROM product_images WHERE id = $1`
+	var url string
+	err := conn.db.QueryRow(ctx, query, id).Scan(&url)
+	if err != nil {
+		return url, utils.MapDbError(err)
+	}
+	return url, nil
+}
+
+// ********** Implementation Delete Product**********
 func (conn ProductRepository) Delete(ctx context.Context, id int64) error {
 	query := `UPDATE products SET status = 'archived', updated_at = NOW() WHERE id = $1`
 	_, err := conn.db.Exec(ctx, query, id)
@@ -369,7 +496,7 @@ func NewCategoryRepsitory(db *pgx.Conn) *CategoryRepository {
 	}
 }
 
-// Create category
+// ********** Implementation Create Category**********
 func (conn CategoryRepository) CreateCategory(ctx context.Context, c *productModel.Category) (int64, error) {
 	query := `INSERT INTO categories (name, parent_id) VALUES ($1, $2) RETURNING id`
 
@@ -382,7 +509,7 @@ func (conn CategoryRepository) CreateCategory(ctx context.Context, c *productMod
 	return id, nil
 }
 
-// Get Category By Id
+// ********** Implementation Get Category By Id**********
 func (conn CategoryRepository) FindCategory(ctx context.Context, id int64) (*productModel.Category, error) {
 	query := `SELECT id, name, parent_id FROM categories WHERE id = $1`
 	var category productModel.Category
@@ -394,7 +521,7 @@ func (conn CategoryRepository) FindCategory(ctx context.Context, id int64) (*pro
 	return &category, nil
 }
 
-// Update Category
+// ********** Implementation Update Category**********
 func (conn CategoryRepository) UpdateCategory(ctx context.Context, c *productModel.Category) error {
 	query := `UPDATE categories SET name = $2, parent_id = $3, updated_at = $4 WHERE id = $1`
 
@@ -407,7 +534,7 @@ func (conn CategoryRepository) UpdateCategory(ctx context.Context, c *productMod
 	return nil
 }
 
-// Delete Category
+// ********** Implementation Delete Category**********
 func (conn CategoryRepository) DeleteCategory(ctx context.Context, id int64) error {
 	query := `DELETE FROM categories WHERE id = $1`
 
@@ -419,7 +546,7 @@ func (conn CategoryRepository) DeleteCategory(ctx context.Context, id int64) err
 	return nil
 }
 
-// Get list Category
+// ********** Implementation Get list Category**********
 func (conn CategoryRepository) FindAllCategory(ctx context.Context) ([]productModel.Category, error) {
 	query := `SELECT id, name, parent_id FROM categories`
 	rows, err := conn.db.Query(ctx, query)

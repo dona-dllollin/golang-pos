@@ -1,13 +1,17 @@
 package dto
 
-import "github.com/dona-dllollin/belajar-clean-arch/internal/domain/productModel"
+import (
+	"mime/multipart"
+
+	"github.com/dona-dllollin/belajar-clean-arch/internal/domain/productModel"
+)
 
 type CreateProductRequest struct {
 	Name        string `validate:"required"`
 	Description string
 	CategoryId  []*int64
-	// ImageFiles  []*multipart.FileHeader // << ini untuk upload
-	Variants []VariantRequest `json:"variants"`
+	Images      []*multipart.FileHeader // << ini untuk upload
+	Variants    []VariantRequest        `json:"variants"`
 }
 
 type VariantRequest struct {
@@ -49,6 +53,13 @@ type ListCategories struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
 	ParentID *int64 `json:"parent_id"`
+}
+
+type ImagePayload struct {
+	ID        *int64 `json:"id,omitempty"`
+	Action    string `json:"action"`
+	FileKey   string `json:"file_key,omitempty"`
+	SortOrder int    `json:"sort_order,omitempty"`
 }
 
 func MapOptions(options []VariantOptionRequest) []productModel.VariantOption {

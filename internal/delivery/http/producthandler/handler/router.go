@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"fmt"
-
 	"github.com/dona-dllollin/belajar-clean-arch/internal/repository/productrepo"
 	"github.com/dona-dllollin/belajar-clean-arch/internal/usecase/imagecase"
 	"github.com/dona-dllollin/belajar-clean-arch/internal/usecase/productcase"
@@ -24,7 +22,7 @@ func Routes(
 	ProductUseCase := productcase.NewProductService(productRepository, categoryRepository)
 	imageService := imagecase.ImageUploadService{
 		PublicPath:  imagePath,
-		StoragePath: fmt.Sprintf("%s/%s", stotagePath, imagePath),
+		StoragePath: stotagePath,
 	}
 	productHandler := NewProductHandler(ProductUseCase, validator, &imageService)
 
@@ -34,6 +32,7 @@ func Routes(
 	r.Get("/{id}", productHandler.GetProductById)
 	r.Put("/{id}", productHandler.UpdateProduct)
 	r.Delete("/{id}", productHandler.DeleteProduct)
+	r.Put("/{id}/image", productHandler.UpdateImageProduct)
 
 	//categories
 	r.Get("/categories", productHandler.ListCategories)

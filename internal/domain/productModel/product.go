@@ -11,6 +11,17 @@ type Product struct {
 	Variants    []Variant
 }
 
+//Product
+type ProductDetail struct {
+	ID          int64
+	Name        string
+	Description string
+	Categories  []Category
+	Status      string // "active", "inactive", "archived"
+	Images      []ProductImage
+	Variants    []Variant
+}
+
 //Product Category
 type Category struct {
 	ID       int64
